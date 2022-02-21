@@ -20,7 +20,7 @@ export interface GraphicObject {
     guid: string,
     url: string,
     mimetype: string,
-    //Canvas pixels
+    //global pixels
     width : number
     height : number
     translateX : number
@@ -37,7 +37,9 @@ export interface TextObject {
     font : string,
     fontSize : number,
     textAlign: CanvasTextAlign,
-    //Canvas pixels
+    //backgroundColor: Color
+    //backgroundShape: Shape
+    //global pixels
     width : number
     height : number
     translateX : number

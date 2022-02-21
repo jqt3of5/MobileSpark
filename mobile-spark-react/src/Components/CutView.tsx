@@ -1,11 +1,7 @@
-import {Dispatch, MouseEvent, WheelEvent, useEffect, useReducer} from "react";
-import {
-    DrawableObject,
-    DrawableObjectType, GraphicObject,
-    TextObject,
-} from "../common/dto";
 // import {EngraveActionType, EngraveAppAction} from "../Views/EngraveAppState";
 import * as React from "react";
+import {Dispatch, MouseEvent, useEffect, useReducer, WheelEvent} from "react";
+import {DrawableObject, DrawableObjectType,} from "../common/dto";
 import {AppAction, AppActionType} from "../Views/AppState";
 import './CutView.css'
 
@@ -47,75 +43,75 @@ export interface CutViewState {
     selectedGraphicIndex: number
     objects: DrawableObject[]
     hoverGraphicIndex: number
-    viewport: ViewPort
     dispatch: Dispatch<AppAction>
 }
 
 enum CutViewActionType {
     ObjectsLoaded,
-    Select,
-    Transform,
-    Hover,
+    MouseClick,
+    MouseMove,
     Zoom,
-    UpdateViewPort,
     Finish
 }
 type CutViewAction =
     | {type: CutViewActionType.ObjectsLoaded, objects: DrawableObject[]}
-    | {type: CutViewActionType.Select, mouseX: number, mouseY: number}
-    | {type: CutViewActionType.Hover, mouseX: number, mouseY: number}
-    | {type: CutViewActionType.Transform, mousedX: number, mousedY: number}
-    | {type: CutViewActionType.Zoom, scale: number}
-    | {type: CutViewActionType.UpdateViewPort, viewPort: ViewPort}
+    | {type: CutViewActionType.MouseClick, mouseX: number, mouseY: number}
+    | {type: CutViewActionType.MouseMove, mouseX: number, mouseY: number, viewPort: ViewPort}
+    | {type: CutViewActionType.Zoom, scale: number, viewPort: ViewPort}
     | {type: CutViewActionType.Finish}
 
 function reduce(state: CutViewState, action: CutViewAction)
 {
-    //TODO: How do we pass state up to the parent component?
    switch(action.type)
    {
-       case CutViewActionType.UpdateViewPort:
-           return {...state, viewport:action.viewPort}
-
        case CutViewActionType.Zoom:
 
-           let newHeight =  state.viewport.height + action.scale
-           let newWidth = state.viewport.width + action.scale*state.viewport.width/state.viewport.height
+           let newHeight =  action.viewPort.height + action.scale
+           let newWidth = action.viewPort.width + action.scale*action.viewPort.width/action.viewPort.height
 
-           if (newHeight < 100 || newWidth < 100 || newHeight > 5000 || newWidth > 5000)
+           if (newHeight < 500 || newWidth < 500 || newHeight > 50000 || newWidth > 50000)
            {
-               newHeight = state.viewport.height
-               newWidth = state.viewport.width
+               newHeight = action.viewPort.height
+               newWidth = action.viewPort.width
            }
 
-           return {...state, viewport:{...state.viewport, height:newHeight , width: newWidth}}
+           state.dispatch({type: AppActionType.UpdateViewPort, viewPort:{...action.viewPort, width:newWidth, height: newHeight}})
+           return state
 
        case CutViewActionType.ObjectsLoaded:
            return {...state, objects:action.objects}
 
-       case CutViewActionType.Select:
+       case CutViewActionType.MouseClick:
            //Locate the first graphic that surrounds the cursor
            let selectedGraphicIndex = state.objects.findIndex(object => {
                return IsOnGraphicHandle(action.mouseX, action.mouseY, object) !==MouseMode.None
            })
 
-           let mouseMode = selectedGraphicIndex===-1 ? MouseMode.Translate: IsOnGraphicHandle(action.mouseX, action.mouseY, state.objects[selectedGraphicIndex])
+           let mouseMode = selectedGraphicIndex === -1 ? MouseMode.Translate: IsOnGraphicHandle(action.mouseX, action.mouseY, state.objects[selectedGraphicIndex])
 
            return {...state, selectedGraphicIndex: selectedGraphicIndex, mouseX: action.mouseX, mouseY: action.mouseY, mouseMode: mouseMode}
-       case CutViewActionType.Hover:
-           let hoverGraphicIndex = state.objects.findIndex(group => {
-               return IsOnGraphicHandle(action.mouseX, action.mouseY, group) !==MouseMode.None
-           })
 
-           return {...state, hoverGraphicIndex: hoverGraphicIndex, selectedGraphicIndex: -1}
        case CutViewActionType.Finish:
            return {...state, selectedGraphicIndex: -1,  mouseMode: MouseMode.None}
-       case CutViewActionType.Transform:
 
-           //TODO: If no object is selected, we are transforming the viewport
+       case CutViewActionType.MouseMove:
+
+           let mousedX = action.mouseX - state.mouseX
+           let mousedY = action.mouseY - state.mouseY
+
+           if (state.mouseMode === MouseMode.None)
+           {
+               let hoverGraphicIndex = state.objects.findIndex(group => {
+                   return IsOnGraphicHandle(action.mouseX, action.mouseY, group) !==MouseMode.None
+               })
+
+               return {...state, hoverGraphicIndex: hoverGraphicIndex, selectedGraphicIndex: -1}
+           }
+
            if (state.selectedGraphicIndex === -1)
            {
-               return {...state}
+               state.dispatch({type: AppActionType.UpdateViewPort, viewPort:{...action.viewPort, y:action.viewPort.y - mousedY, x: action.viewPort.x - mousedX}})
+               return state
            }
 
            let translateX = 0, translateY = 0, scaleX = 1, scaleY = 1
@@ -124,22 +120,22 @@ function reduce(state: CutViewState, action: CutViewAction)
 
            switch(state.mouseMode)
            {
-               case MouseMode.None:
-                   break;
+               // case MouseMode.None:
+               //     break;
                case MouseMode.Translate:
-                   translateX = action.mousedX
-                   translateY = action.mousedY
+                   translateX = mousedX
+                   translateY = mousedY
                    break;
                case MouseMode.ScaleBottomRight:
-                   scaleX = (width + action.mousedX) / width
-                   scaleY = (height + action.mousedY) / height
+                   scaleX = (width + mousedX) / width
+                   scaleY = (height + mousedY) / height
                    scaleX = scaleX < .05 ? .05 : scaleX
                    scaleY = scaleY < .05 ? .05 : scaleY
                    scaleY = scaleX = Math.min(scaleY, scaleX)
                    break;
                case MouseMode.ScaleBottomLeft:
-                   scaleX = (width - action.mousedX) / width
-                   scaleY = (height + action.mousedY) / height
+                   scaleX = (width - mousedX) / width
+                   scaleY = (height + mousedY) / height
 
                    scaleX = scaleX < .05 ? .05 : scaleX
                    scaleY = scaleY < .05 ? .05 : scaleY
@@ -149,8 +145,8 @@ function reduce(state: CutViewState, action: CutViewAction)
                    translateY = 0
                    break;
                case MouseMode.ScaleTopRight:
-                   scaleX = (width + action.mousedX) / width
-                   scaleY = (height - action.mousedY) / height
+                   scaleX = (width + mousedX) / width
+                   scaleY = (height - mousedY) / height
 
                    scaleX = scaleX < .05 ? .05 : scaleX
                    scaleY = scaleY < .05 ? .05 : scaleY
@@ -161,8 +157,8 @@ function reduce(state: CutViewState, action: CutViewAction)
                    translateY = height * (1 - scaleY)
                    break;
                case MouseMode.ScaleTopLeft:
-                   scaleX = (width - action.mousedX) / width
-                   scaleY = (height - action.mousedY) / height
+                   scaleX = (width - mousedX) / width
+                   scaleY = (height - mousedY) / height
                    scaleX = scaleX < .05 ? .05 : scaleX
                    scaleY = scaleY < .05 ? .05 : scaleY
                    //aspect lock
@@ -199,7 +195,6 @@ export function CutView (props : CutViewProps) {
         mouseMode: MouseMode.None,
         selectedGraphicIndex: -1,
         hoverGraphicIndex: -1,
-        viewport: props.viewport,
         //In canvas pixels, not client pixels
         mouseX: 0,
         mouseY: 0,
@@ -212,10 +207,18 @@ export function CutView (props : CutViewProps) {
     function toCanvasPixels(x : number, y : number) : number[]
     {
         if (canvasRef.current != null)
-            return [canvasRef.current.width/state.viewport.width * (x - state.viewport.x), canvasRef.current.height/state.viewport.height * (y - state.viewport.y)]
+            return [canvasRef.current.width/props.viewport.width * (x - props.viewport.x), canvasRef.current.height/props.viewport.height * (y - props.viewport.y)]
 
         return [x,y]
     }
+    function toGlobalPixels(x : number, y : number) : number[]
+    {
+        if (canvasRef.current != null)
+            return [props.viewport.width/canvasRef.current.width * x + props.viewport.x, props.viewport.height/canvasRef.current.height * y + props.viewport.y]
+
+        return [x,y]
+    }
+
 
     useEffect(() => {
 
@@ -281,31 +284,42 @@ export function CutView (props : CutViewProps) {
                 ctx.textBaseline = "bottom"
 
                 ctx.clearRect(0,0,canvasRef.current.width, canvasRef.current.height)
-                //TODO: I want dots drawn on the canvas for alignment and visual appeal. However, I want then to scale/fade/etc in a nice way
-                for (let vy = state.viewport.y; vy < state.viewport.y + state.viewport.height; vy += 10)
-                {
-                    for (let vx = state.viewport.x; vx < state.viewport.x + state.viewport.width; vx += 10)
-                    {
-                        let [x, y] = toCanvasPixels(vx, vy)
-                        console.log(`${canvasRef.current.width} ${canvasRef.current.height} ${x} ${y} ${vx} ${vy}`)
-                        ctx.fillStyle = '#000000'
-                        ctx.strokeStyle = '#000000'
-                        ctx.beginPath()
-                        ctx.arc(x, y, 1, 0, 0)
-                        ctx.fill()
-                        ctx.stroke()
-                    }
-                }
+
                 drawObjects(ctx)
             }
         }
-    }, [state.objects, state.hoverGraphicIndex, state.selectedGraphicIndex, state.viewport])
+    }, [state.objects, state.hoverGraphicIndex, state.selectedGraphicIndex, props.viewport])
 
     return (
         <canvas ref={canvasRef} className={"cut-view-canvas"} onMouseDown={onMouseDown} onMouseUp={onMouseUp} onMouseMove={onMouseMove} onWheel={onScroll}/>
     )
 
     function drawObjects(ctx : CanvasRenderingContext2D)  {
+
+        let root = 100
+        ctx.fillStyle = '#000000'
+        let maxDots = 50
+        let vw = props.viewport.x + props.viewport.width
+        let vh = props.viewport.y + props.viewport.height
+
+        while (props.viewport.width/root > maxDots)
+        {
+            root = root*2
+        }
+
+        let startX = Math.floor(props.viewport.x/root)*root
+        let startY =Math.floor(props.viewport.y/root)*root
+        for (let vy = startY; vy < vh; vy += root)
+        {
+            for (let vx = startX; vx < vw; vx += root)
+            {
+                let [x, y] = toCanvasPixels(vx, vy)
+                ctx.beginPath()
+                ctx.arc(x, y, 1, 0, 2*Math.PI)
+                ctx.fill()
+            }
+        }
+
         for (const object of state.objects) {
 
             //TODO: We will have all the objects in the list, but we don't want to draw all of them.
@@ -405,7 +419,7 @@ export function CutView (props : CutViewProps) {
 
         if (canvasRef.current != null)
         {
-            dispatch({type: CutViewActionType.Zoom, scale: event.deltaY})
+            dispatch({type: CutViewActionType.Zoom, scale: event.deltaY, viewPort:props.viewport})
         }
     }
 
@@ -416,7 +430,8 @@ export function CutView (props : CutViewProps) {
             let canvasX = (event.clientX - rect.x) / rect.width * canvasRef.current.width
             let canvasY = (event.clientY - rect.y) / rect.height * canvasRef.current.height
 
-            dispatch({type: CutViewActionType.Select, mouseX: canvasX,  mouseY:canvasY})
+            let [globalX, globalY] = toGlobalPixels(canvasX, canvasY)
+            dispatch({type: CutViewActionType.MouseClick, mouseX: globalX,  mouseY:globalY})
         }
     }
 
@@ -437,6 +452,8 @@ export function CutView (props : CutViewProps) {
             let canvasX = (event.clientX - rect.x) / rect.width * canvasRef.current.width
             let canvasY = (event.clientY - rect.y) / rect.height * canvasRef.current.height
 
+            let [globalX, globalY] = toGlobalPixels(canvasX, canvasY)
+
             canvasRef.current.style.cursor = (mode => {
                 switch(mode)
                 {
@@ -452,14 +469,7 @@ export function CutView (props : CutViewProps) {
                 return "default"
             })(state.mouseMode)
 
-            if (state.mouseMode !==MouseMode.None)
-            {
-                dispatch({type: CutViewActionType.Transform, mousedX:canvasX - state.mouseX, mousedY: canvasY - state.mouseY})
-            }
-            else
-            {
-                dispatch({type: CutViewActionType.Hover, mouseX:canvasX, mouseY: canvasY})
-            }
+            dispatch({type: CutViewActionType.MouseMove, mouseX:globalX, mouseY: globalY, viewPort:props.viewport})
         }
     }
 
