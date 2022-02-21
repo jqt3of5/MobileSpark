@@ -48,11 +48,12 @@ export interface CutViewState {
     objects: DrawableObject[]
     hoverGraphicIndex: number
     viewport: ViewPort
+    canvasBox : ViewPort
 }
 
 enum CutViewActionType {
     ObjectsLoaded,
-    SetViewBounds,
+    SetCanvasBox,
     Select,
     Transform,
     Hover,
@@ -62,7 +63,7 @@ enum CutViewActionType {
 }
 type CutViewAction =
     | {type: CutViewActionType.ObjectsLoaded, objects: DrawableObject[]}
-    | {type: CutViewActionType.SetViewBounds, width: number, height: number}
+    | {type: CutViewActionType.SetCanvasBox, width: number, height: number}
     | {type: CutViewActionType.Select, mouseX: number, mouseY: number}
     | {type: CutViewActionType.Hover, mouseX: number, mouseY: number}
     | {type: CutViewActionType.Transform, mousedX: number, mousedY: number}
@@ -74,15 +75,15 @@ function reduce(state: CutViewState, action: CutViewAction)
     //TODO: How do we pass state up to the parent component?
    switch(action.type)
    {
-       case CutViewActionType.SetViewBounds:
-           return {...state, viewport: {...state.viewport, width: action.width, height: action.height}}
+       case CutViewActionType.SetCanvasBox:
+           return {...state, canvasBox: {...state.canvasBox, width: action.width, height: action.height}}
 
        case CutViewActionType.Zoom:
 
            let newHeight =  state.viewport.height + action.scale
            let newWidth = state.viewport.width + action.scale*state.viewport.width/state.viewport.height
 
-           if (newHeight < 200 || newWidth < 200 || newHeight > 5000 || newWidth > 5000)
+           if (newHeight < 100 || newWidth < 100 || newHeight > 5000 || newWidth > 5000)
            {
                newHeight = state.viewport.height
                newWidth = state.viewport.width
@@ -111,6 +112,12 @@ function reduce(state: CutViewState, action: CutViewAction)
        case CutViewActionType.Finish:
            return {...state, selectedGraphicIndex: -1,  mouseMode: MouseMode.None}
        case CutViewActionType.Transform:
+
+           //TODO: If no object is selected, we are transforming the viewport
+           if (state.selectedGraphicIndex === -1)
+           {
+               return {...state}
+           }
 
            let translateX = 0, translateY = 0, scaleX = 1, scaleY = 1
            let width = state.objects[state.selectedGraphicIndex].width
@@ -169,7 +176,6 @@ function reduce(state: CutViewState, action: CutViewAction)
                    break;
            }
 
-           //TODO: If no object is selected, we are transforming the viewport
 
            return {...state, objects: state.objects.map(group => {
                    if (group === state.objects[state.selectedGraphicIndex])
@@ -196,6 +202,7 @@ export function CutView (props : CutViewProps) {
         hoverGraphicIndex: -1,
         //TODO: Who should own this?
         viewport: props.viewport,
+        canvasBox: props.viewport,
         //In canvas pixels, not client pixels
         mouseX: 0,
         mouseY: 0,
@@ -207,8 +214,7 @@ export function CutView (props : CutViewProps) {
     useEffect(() => {
         if (canvasRef.current !== null) {
             //After the view has loaded, set the viewport equal to the bounds of the canvas
-            //TODO: We probably don't want to set the bounds exacly because we should be saving the viewport, but want to maintain the aspect ratio.
-            dispatch({type: CutViewActionType.SetViewBounds, width:canvasRef.current.getBoundingClientRect().width, height: canvasRef.current.getBoundingClientRect().height})
+            dispatch({type: CutViewActionType.SetCanvasBox, width:canvasRef.current.getBoundingClientRect().width, height: canvasRef.current.getBoundingClientRect().height})
         }
     }, [])
 
@@ -271,37 +277,14 @@ export function CutView (props : CutViewProps) {
 
                 console.log("viewport width" + state.viewport.width + "viewport height" + state.viewport.height)
 
-                let order = 10
-                let minDots = 80
-                let maxDotSpacing = state.viewport.width/minDots
-                //Find the largest order of dots less than our max spacing
-                let dotSpacingNormalized = order
-                while (dotSpacingNormalized+order < maxDotSpacing)
-                {
-                    dotSpacingNormalized = dotSpacingNormalized+order
-                }
-
-                let startX = (state.viewport.x/dotSpacingNormalized)*dotSpacingNormalized
-                let startY = (state.viewport.y/dotSpacingNormalized)*dotSpacingNormalized
-                let heightRatio = state.viewport.height/canvasRef.current.height
-                let widthRatio = state.viewport.width/canvasRef.current.width
-
                 //TODO: I want dots drawn on the canvas for alignment and visual appeal. However, I want then to scale/fade/etc in a nice way
-                for (let row = startY; row < startY + state.viewport.height; row += dotSpacingNormalized)
+                for (let row = 0; row < canvasRef.current.height; row += 10)
                 {
-                    for (let col = startX; col < startX + state.viewport.width; col+= dotSpacingNormalized)
+                    for (let col = 0; col < canvasRef.current.width; col+= 10)
                     {
-                        let depth = 0
-                        let o = order
-                        while (row%o === 0 && col%o === 0)
-                        {
-                            o = o * order
-                            depth += 1
-                        }
-
                         ctx.fillStyle = '#555555'
                         ctx.beginPath()
-                        ctx.arc((col - startX)/widthRatio, (row- startY)/heightRatio, dotSpacingNormalized/order*heightRatio, 0, 2*Math.PI)
+                        ctx.arc(col, row, 5, 0, 0)
                         ctx.fill()
                     }
                 }
