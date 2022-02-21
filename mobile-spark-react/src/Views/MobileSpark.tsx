@@ -15,11 +15,14 @@ function reducer(state: AppState, action :AppAction) : AppState
         case AppActionType.TextObjectAdded:
         case AppActionType.UpdateProject:
             return state
+        case AppActionType.UpdateViewPort:
+            return {...state, viewPort:action.viewPort}
     }
 }
 export function MobileSpark() {
     var [state, dispatch] = useReducer(reducer, {
-        project: {projectId: "12345", viewPort: {width: 1000, height: 400, x: -500, y: -500}, objects: []},
+        project: {projectId: "12345", objects:[]},
+        viewPort: {width: 1903, height: 1000, x: -500, y: -500},
         snapTo: SnapTo.Continuous,
         isUploadingNewGraphic: false,
     })
@@ -50,7 +53,7 @@ export function MobileSpark() {
    return (
        <div className={"mobile-spark-main"}>
            {state.project != null &&
-               <CutView snapTo={state.snapTo} objects={state.project.objects} viewport={state.project.viewPort} dispatch={dispatch}/>
+               <CutView snapTo={state.snapTo} objects={state.project.objects} viewport={state.viewPort} dispatch={dispatch}/>
            }
        </div>
    )

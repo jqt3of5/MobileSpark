@@ -48,26 +48,25 @@ export interface CutViewState {
     objects: DrawableObject[]
     hoverGraphicIndex: number
     viewport: ViewPort
-    canvasBox : ViewPort
+    dispatch: Dispatch<AppAction>
 }
 
 enum CutViewActionType {
     ObjectsLoaded,
-    SetCanvasBox,
     Select,
     Transform,
     Hover,
     Zoom,
-
+    UpdateViewPort,
     Finish
 }
 type CutViewAction =
     | {type: CutViewActionType.ObjectsLoaded, objects: DrawableObject[]}
-    | {type: CutViewActionType.SetCanvasBox, width: number, height: number}
     | {type: CutViewActionType.Select, mouseX: number, mouseY: number}
     | {type: CutViewActionType.Hover, mouseX: number, mouseY: number}
     | {type: CutViewActionType.Transform, mousedX: number, mousedY: number}
     | {type: CutViewActionType.Zoom, scale: number}
+    | {type: CutViewActionType.UpdateViewPort, viewPort: ViewPort}
     | {type: CutViewActionType.Finish}
 
 function reduce(state: CutViewState, action: CutViewAction)
@@ -75,8 +74,8 @@ function reduce(state: CutViewState, action: CutViewAction)
     //TODO: How do we pass state up to the parent component?
    switch(action.type)
    {
-       case CutViewActionType.SetCanvasBox:
-           return {...state, canvasBox: {...state.canvasBox, width: action.width, height: action.height}}
+       case CutViewActionType.UpdateViewPort:
+           return {...state, viewport:action.viewPort}
 
        case CutViewActionType.Zoom:
 
@@ -200,71 +199,79 @@ export function CutView (props : CutViewProps) {
         mouseMode: MouseMode.None,
         selectedGraphicIndex: -1,
         hoverGraphicIndex: -1,
-        //TODO: Who should own this?
         viewport: props.viewport,
-        canvasBox: props.viewport,
         //In canvas pixels, not client pixels
         mouseX: 0,
         mouseY: 0,
         objects: [],
+        dispatch: props.dispatch
     })
 
     let canvasRef = React.createRef<HTMLCanvasElement>()
 
+    function toCanvasPixels(x : number, y : number) : number[]
+    {
+        if (canvasRef.current != null)
+            return [canvasRef.current.width/state.viewport.width * (x - state.viewport.x), canvasRef.current.height/state.viewport.height * (y - state.viewport.y)]
+
+        return [x,y]
+    }
+
     useEffect(() => {
+
         if (canvasRef.current !== null) {
-            //After the view has loaded, set the viewport equal to the bounds of the canvas
-            dispatch({type: CutViewActionType.SetCanvasBox, width:canvasRef.current.getBoundingClientRect().width, height: canvasRef.current.getBoundingClientRect().height})
+            canvasRef.current.width = canvasRef.current.getBoundingClientRect().width
+            canvasRef.current.height = canvasRef.current.getBoundingClientRect().height
         }
     }, [])
-
-    useEffect(() => {
-        function loadGraphics(objects : DrawableObject[]) {
-            let promises = objects.map(object => {
-                return new Promise<DrawableObject>(resolve => {
-                    switch(object.type)
-                    {
-                        case DrawableObjectType.GraphicObject:
-                            loadImage(object.url).then<GraphicObject>(image => {
-                                object.image = image
-                                return object
-                            }).then(value => resolve(value))
-                            break;
-                        case DrawableObjectType.TextObject:
-
-                            let width = 0
-                            let height = 0
-                            if (canvasRef.current !== null)
-                            {
-                                let ctx = canvasRef.current.getContext("2d")
-                                if (ctx !==null) {
-
-                                    ctx.textBaseline = "bottom"
-                                    ctx.font = `${object.fontSize}px ${object.font}`
-                                    let linesMeasures = object.text.split("\n").map(line => ctx!.measureText(line))
-
-                                    width  = Math.max(...linesMeasures.map(m => m.width))
-                                    height = linesMeasures.map(measure => measure.actualBoundingBoxAscent).reduce((previousValue, currentValue) => {
-                                        return previousValue + currentValue
-                                    })
-                                }
-                            }
-                            object.width = width
-                            object.height = height
-                            resolve(object)
-                            break;
-                    }
-                })
-            })
-
-            Promise.all(promises).then(groups => {
-                dispatch({type: CutViewActionType.ObjectsLoaded, objects:groups})
-            })
-        }
-        //load all a graphics
-        loadGraphics(props.objects)
-        // eslint-disable-next-line
-    }, [props.objects])
+    //
+    // useEffect(() => {
+    //     function loadGraphics(objects : DrawableObject[]) {
+    //         let promises = objects.map(object => {
+    //             return new Promise<DrawableObject>(resolve => {
+    //                 switch(object.type)
+    //                 {
+    //                     case DrawableObjectType.GraphicObject:
+    //                         loadImage(object.url).then<GraphicObject>(image => {
+    //                             object.image = image
+    //                             return object
+    //                         }).then(value => resolve(value))
+    //                         break;
+    //                     case DrawableObjectType.TextObject:
+    //
+    //                         let width = 0
+    //                         let height = 0
+    //                         if (canvasRef.current !== null)
+    //                         {
+    //                             let ctx = canvasRef.current.getContext("2d")
+    //                             if (ctx !==null) {
+    //
+    //                                 ctx.textBaseline = "bottom"
+    //                                 ctx.font = `${object.fontSize}px ${object.font}`
+    //                                 let linesMeasures = object.text.split("\n").map(line => ctx!.measureText(line))
+    //
+    //                                 width  = Math.max(...linesMeasures.map(m => m.width))
+    //                                 height = linesMeasures.map(measure => measure.actualBoundingBoxAscent).reduce((previousValue, currentValue) => {
+    //                                     return previousValue + currentValue
+    //                                 })
+    //                             }
+    //                         }
+    //                         object.width = width
+    //                         object.height = height
+    //                         resolve(object)
+    //                         break;
+    //                 }
+    //             })
+    //         })
+    //
+    //         Promise.all(promises).then(groups => {
+    //             dispatch({type: CutViewActionType.ObjectsLoaded, objects:groups})
+    //         })
+    //     }
+    //     //load all a graphics
+    //     loadGraphics(props.objects)
+    //     // eslint-disable-next-line
+    // }, [props.objects])
 
     useEffect(() => {
         if (canvasRef.current !== null)
@@ -273,29 +280,29 @@ export function CutView (props : CutViewProps) {
             if (ctx !== null) {
                 ctx.textBaseline = "bottom"
 
-                ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
-
-                console.log("viewport width" + state.viewport.width + "viewport height" + state.viewport.height)
-
+                ctx.clearRect(0,0,canvasRef.current.width, canvasRef.current.height)
                 //TODO: I want dots drawn on the canvas for alignment and visual appeal. However, I want then to scale/fade/etc in a nice way
-                for (let row = 0; row < canvasRef.current.height; row += 10)
+                for (let vy = state.viewport.y; vy < state.viewport.y + state.viewport.height; vy += 10)
                 {
-                    for (let col = 0; col < canvasRef.current.width; col+= 10)
+                    for (let vx = state.viewport.x; vx < state.viewport.x + state.viewport.width; vx += 10)
                     {
-                        ctx.fillStyle = '#555555'
+                        let [x, y] = toCanvasPixels(vx, vy)
+                        console.log(`${canvasRef.current.width} ${canvasRef.current.height} ${x} ${y} ${vx} ${vy}`)
+                        ctx.fillStyle = '#000000'
+                        ctx.strokeStyle = '#000000'
                         ctx.beginPath()
-                        ctx.arc(col, row, 5, 0, 0)
+                        ctx.arc(x, y, 1, 0, 0)
                         ctx.fill()
+                        ctx.stroke()
                     }
                 }
-
                 drawObjects(ctx)
             }
         }
-    }, [state.objects, state.hoverGraphicIndex, state.selectedGraphicIndex, state.viewport, props.viewport])
+    }, [state.objects, state.hoverGraphicIndex, state.selectedGraphicIndex, state.viewport])
 
     return (
-        <canvas ref={canvasRef} width={state.viewport.width} height={state.viewport.height} className={"cut-view-canvas"} onMouseDown={onMouseDown} onMouseUp={onMouseUp} onMouseMove={onMouseMove} onWheel={onScroll}/>
+        <canvas ref={canvasRef} className={"cut-view-canvas"} onMouseDown={onMouseDown} onMouseUp={onMouseUp} onMouseMove={onMouseMove} onWheel={onScroll}/>
     )
 
     function drawObjects(ctx : CanvasRenderingContext2D)  {

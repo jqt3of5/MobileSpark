@@ -52,6 +52,5 @@ export type DrawableObject = GraphicObject | TextObject
 
 export interface Project {
     projectId: string,
-    viewPort : ViewPort,
     objects : DrawableObject [],
 }
