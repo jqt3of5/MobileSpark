@@ -1,64 +1,13 @@
-import {Dispatch, MouseEvent, useEffect, useReducer} from "react";
+import {Dispatch, MouseEvent, WheelEvent, useEffect, useReducer} from "react";
 import {
     DrawableObject,
-    DrawableObjectType, LaserMode,
-    Material,
-    SvgGraphicGroup,
-    SvgSubGraphic,
+    DrawableObjectType, GraphicObject,
     TextObject,
 } from "../common/dto";
-import {Dimension, DimensionUnits, FromPixels, ToPixels, ToUnitName} from "../common/Dimension";
 // import {EngraveActionType, EngraveAppAction} from "../Views/EngraveAppState";
-import {ScaleGraphicGroup} from "../common/busi";
 import * as React from "react";
-
-interface LoadedGraphicGroup {
-    type: DrawableObjectType.SvgGraphicGroup
-    object: SvgGraphicGroup
-    loadedGraphics : LoadedGraphic []
-    //Canvas pixels
-    width : number
-    height : number
-    translateX : number
-    translateY : number
-    scaleX : number
-    scaleY : number
-    startX : number
-    startY : number
-}
-
-interface LoadedGraphic {
-    type: DrawableObjectType.SubGraphic
-    image : HTMLImageElement | null
-    object : SvgSubGraphic
-
-    //Canvas pixels
-    width : number
-    height : number
-    translateX : number
-    translateY : number
-    scaleX : number
-    scaleY : number
-    startX : number
-    startY : number
-}
-
-interface LoadedTextObject {
-    type: DrawableObjectType.TextObject
-    object : TextObject
-
-    //Canvas pixels
-    width : number
-    height : number
-    translateX : number
-    translateY : number
-    scaleX : number
-    scaleY : number
-    startX : number
-    startY : number
-}
-
-type LoadedDrawableObject = LoadedGraphicGroup | LoadedTextObject | LoadedGraphic
+import {AppAction, AppActionType} from "../Views/AppState";
+import './CutView.css'
 
 export enum SnapTo {
     Continuous,
@@ -69,13 +18,18 @@ export enum SnapTo {
     OneCentimeter,
     OneMillimeter
 }
+
+export interface ViewPort {
+   width : number
+   height : number
+   x : number
+   y : number
+}
 export interface CutViewProps {
-    // snapTo : SnapTo
-    // boardWidth: Dimension
-    // boardHeight: Dimension
-    // material: Material
+    snapTo : SnapTo
     objects: DrawableObject[]
-    // dispatch: Dispatch<EngraveAppAction>
+    viewport: ViewPort
+    dispatch: Dispatch<AppAction>
 }
 enum MouseMode {
     Translate,
@@ -91,78 +45,61 @@ export interface CutViewState {
     mouseX : number
     mouseY : number
     selectedGraphicIndex: number
+    objects: DrawableObject[]
     hoverGraphicIndex: number
-    objects: LoadedDrawableObject[]
-    background : HTMLImageElement | null
+    viewport: ViewPort
 }
 
 enum CutViewActionType {
-    GraphicsLoaded,
-    BackgroundLoaded,
+    ObjectsLoaded,
+    SetViewBounds,
     Select,
     Transform,
     Hover,
+    Zoom,
+
     Finish
 }
 type CutViewAction =
-    | {type: CutViewActionType.GraphicsLoaded, objects: LoadedDrawableObject[]}
-    | {type: CutViewActionType.BackgroundLoaded, background: HTMLImageElement}
+    | {type: CutViewActionType.ObjectsLoaded, objects: DrawableObject[]}
+    | {type: CutViewActionType.SetViewBounds, width: number, height: number}
     | {type: CutViewActionType.Select, mouseX: number, mouseY: number}
     | {type: CutViewActionType.Hover, mouseX: number, mouseY: number}
     | {type: CutViewActionType.Transform, mousedX: number, mousedY: number}
+    | {type: CutViewActionType.Zoom, scale: number}
     | {type: CutViewActionType.Finish}
-
-export function ConvertLoadedObjectToObject(loadedObject : LoadedDrawableObject, pxPerUnit : number, unit: DimensionUnits) : DrawableObject
-{
-    switch(loadedObject.type) {
-        case DrawableObjectType.SvgGraphicGroup:
-            return {...loadedObject.object,
-                posX: new Dimension((loadedObject.startX + loadedObject.translateX) / pxPerUnit, unit),
-                posY: new Dimension((loadedObject.startY + loadedObject.translateY) / pxPerUnit, unit),
-                width: new Dimension(loadedObject.width / pxPerUnit, unit),
-                height:  new Dimension(loadedObject.height / pxPerUnit, unit),
-                subGraphics: loadedObject.loadedGraphics.map(graphic => {
-                        return {...graphic.object,
-                            posX: new Dimension(graphic.translateX / pxPerUnit, unit),
-                            posY: new Dimension(graphic.translateY / pxPerUnit, unit),
-                            width: new Dimension(graphic.width / pxPerUnit, unit),
-                            height: new Dimension(graphic.height / pxPerUnit, unit),
-                        }
-                    })
-            }
-        case DrawableObjectType.SubGraphic:
-            return {...loadedObject.object,
-                    posX: new Dimension((loadedObject.startX + loadedObject.translateX) / pxPerUnit, unit),
-                    posY: new Dimension((loadedObject.startY + loadedObject.translateY) / pxPerUnit, unit),
-                    width: new Dimension(loadedObject.width / pxPerUnit, unit),
-                    height: new Dimension(loadedObject.height / pxPerUnit, unit),
-                    }
-        case DrawableObjectType.TextObject:
-            return {...loadedObject.object,
-                posX: new Dimension((loadedObject.startX + loadedObject.translateX) / pxPerUnit, unit),
-                posY: new Dimension((loadedObject.startY + loadedObject.translateY) / pxPerUnit, unit),
-                }
-        default:
-            return loadedObject
-    }
-}
 
 function reduce(state: CutViewState, action: CutViewAction)
 {
     //TODO: How do we pass state up to the parent component?
    switch(action.type)
    {
-       case CutViewActionType.GraphicsLoaded:
+       case CutViewActionType.SetViewBounds:
+           return {...state, viewport: {...state.viewport, width: action.width, height: action.height}}
+
+       case CutViewActionType.Zoom:
+
+           let newHeight =  state.viewport.height + action.scale
+           let newWidth = state.viewport.width + action.scale*state.viewport.width/state.viewport.height
+
+           if (newHeight < 200 || newWidth < 200 || newHeight > 5000 || newWidth > 5000)
+           {
+               newHeight = state.viewport.height
+               newWidth = state.viewport.width
+           }
+
+           return {...state, viewport:{...state.viewport, height:newHeight , width: newWidth}}
+
+       case CutViewActionType.ObjectsLoaded:
            return {...state, objects:action.objects}
-       case CutViewActionType.BackgroundLoaded:
-           return {...state, background:action.background}
+
        case CutViewActionType.Select:
            //Locate the first graphic that surrounds the cursor
            let selectedGraphicIndex = state.objects.findIndex(object => {
                return IsOnGraphicHandle(action.mouseX, action.mouseY, object) !==MouseMode.None
            })
 
-           let mouseMode = selectedGraphicIndex===-1 ? MouseMode.None : IsOnGraphicHandle(action.mouseX, action.mouseY, state.objects[selectedGraphicIndex])
+           let mouseMode = selectedGraphicIndex===-1 ? MouseMode.Translate: IsOnGraphicHandle(action.mouseX, action.mouseY, state.objects[selectedGraphicIndex])
 
            return {...state, selectedGraphicIndex: selectedGraphicIndex, mouseX: action.mouseX, mouseY: action.mouseY, mouseMode: mouseMode}
        case CutViewActionType.Hover:
@@ -232,6 +169,8 @@ function reduce(state: CutViewState, action: CutViewAction)
                    break;
            }
 
+           //TODO: If no object is selected, we are transforming the viewport
+
            return {...state, objects: state.objects.map(group => {
                    if (group === state.objects[state.selectedGraphicIndex])
                    {
@@ -255,82 +194,34 @@ export function CutView (props : CutViewProps) {
         mouseMode: MouseMode.None,
         selectedGraphicIndex: -1,
         hoverGraphicIndex: -1,
+        //TODO: Who should own this?
+        viewport: props.viewport,
         //In canvas pixels, not client pixels
         mouseX: 0,
         mouseY: 0,
         objects: [],
-        background: null
     })
 
     let canvasRef = React.createRef<HTMLCanvasElement>()
 
     useEffect(() => {
-
-    }, [])
-    useEffect(() => {
         if (canvasRef.current !== null) {
-            // canvasRef.current.width = props.boardWidth.value * CutView.pxPerUnit + CutView.shadowBlur*2
-            // canvasRef.current.height = props.boardHeight.value * CutView.pxPerUnit + CutView.shadowBlur*2
-            canvasRef.current.width = 1000
-            canvasRef.current.height = 1000
+            //After the view has loaded, set the viewport equal to the bounds of the canvas
+            //TODO: We probably don't want to set the bounds exacly because we should be saving the viewport, but want to maintain the aspect ratio.
+            dispatch({type: CutViewActionType.SetViewBounds, width:canvasRef.current.getBoundingClientRect().width, height: canvasRef.current.getBoundingClientRect().height})
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    })
-    // }, [props.boardWidth, props.boardHeight])
+    }, [])
 
     useEffect(() => {
-        function loadGraphics(objects : DrawableObject[], boardHeight : Dimension, boardWidth: Dimension) {
+        function loadGraphics(objects : DrawableObject[]) {
             let promises = objects.map(object => {
-                return new Promise<LoadedDrawableObject>(resolve => {
+                return new Promise<DrawableObject>(resolve => {
                     switch(object.type)
                     {
-                        case DrawableObjectType.SvgGraphicGroup:
-                            let promises = object.subGraphics.map(graphic => {
-                                return loadImage(graphic.url).then<LoadedGraphic>(image => {
-                                    return {
-                                        type: DrawableObjectType.SubGraphic,
-                                        image: image, object: graphic,
-                                        height: ToPixels(graphic.height, CutView.pxPerUnit, boardHeight.unit),
-                                        width: ToPixels(graphic.width, CutView.pxPerUnit, boardWidth.unit),
-                                        translateX: ToPixels(graphic.posX, CutView.pxPerUnit, boardHeight.unit),
-                                        translateY: ToPixels(graphic.posY, CutView.pxPerUnit, boardWidth.unit),
-                                        scaleX : 1,
-                                        scaleY : 1,
-                                        startX: ToPixels(object.posX, CutView.pxPerUnit, boardHeight.unit),
-                                        startY: ToPixels(object.posY, CutView.pxPerUnit, boardWidth.unit),
-                                    }
-                                })
-                            })
-
-                            Promise.all(promises).then<LoadedGraphicGroup>(loadedGraphics => {
-                                return {
-                                    type: DrawableObjectType.SvgGraphicGroup,
-                                    loadedGraphics: loadedGraphics, object: object,
-                                    height: ToPixels(object.height, CutView.pxPerUnit, boardHeight.unit),
-                                    width: ToPixels(object.width, CutView.pxPerUnit, boardWidth.unit),
-                                    startX: ToPixels(object.posX, CutView.pxPerUnit, boardHeight.unit),
-                                    startY: ToPixels(object.posY, CutView.pxPerUnit, boardWidth.unit),
-                                    translateX: 0,
-                                    translateY: 0,
-                                    scaleX: 1,
-                                    scaleY: 1
-                                }
-                            }).then(value => resolve(value))
-                            break;
-                        case DrawableObjectType.SubGraphic:
-                            loadImage(object.url).then<LoadedGraphic>(image => {
-                                return {
-                                    type: DrawableObjectType.SubGraphic,
-                                    image: image, object: object,
-                                    height: ToPixels(object.height, CutView.pxPerUnit, boardHeight.unit),
-                                    width: ToPixels(object.width, CutView.pxPerUnit, boardWidth.unit),
-                                    translateX: ToPixels(object.posX, CutView.pxPerUnit, boardHeight.unit),
-                                    translateY: ToPixels(object.posY, CutView.pxPerUnit, boardWidth.unit),
-                                    scaleX : 1,
-                                    scaleY : 1,
-                                    startX: ToPixels(object.posX, CutView.pxPerUnit, boardHeight.unit),
-                                    startY: ToPixels(object.posY, CutView.pxPerUnit, boardWidth.unit),
-                                }
+                        case DrawableObjectType.GraphicObject:
+                            loadImage(object.url).then<GraphicObject>(image => {
+                                object.image = image
+                                return object
                             }).then(value => resolve(value))
                             break;
                         case DrawableObjectType.TextObject:
@@ -352,38 +243,22 @@ export function CutView (props : CutViewProps) {
                                     })
                                 }
                             }
-                            resolve({
-                                type: DrawableObjectType.TextObject, object: object,
-                                height: height,
-                                width: width,
-                                startX: ToPixels(object.posX, CutView.pxPerUnit, boardHeight.unit),
-                                startY: ToPixels(object.posY, CutView.pxPerUnit, boardWidth.unit),
-                                translateX: 0,
-                                translateY: 0,
-                                scaleX: 1,
-                                scaleY: 1
-                            })
+                            object.width = width
+                            object.height = height
+                            resolve(object)
                             break;
                     }
                 })
             })
 
             Promise.all(promises).then(groups => {
-                dispatch({type: CutViewActionType.GraphicsLoaded, objects:groups})
+                dispatch({type: CutViewActionType.ObjectsLoaded, objects:groups})
             })
         }
         //load all a graphics
-        loadGraphics(props.objects, props.boardHeight, props.boardWidth)
+        loadGraphics(props.objects)
         // eslint-disable-next-line
-    }, [props.objects, props.boardWidth, props.boardHeight])
-
-    useEffect(() => {
-        loadImage(`/materials/${props.material.id}`).then(background => {
-            //TODO: Does setstate do a diff on the state? Or will this change the whole thing?
-            dispatch({type: CutViewActionType.BackgroundLoaded, background:background})
-        })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [props.material])
+    }, [props.objects])
 
     useEffect(() => {
         if (canvasRef.current !== null)
@@ -391,28 +266,62 @@ export function CutView (props : CutViewProps) {
             let ctx = canvasRef.current.getContext("2d")
             if (ctx !== null) {
                 ctx.textBaseline = "bottom"
+
                 ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
 
-                if (state.background !== null) {
-                    ctx.shadowBlur = CutView.shadowBlur
-                    ctx.shadowColor = 'gray'
-                    ctx.drawImage(state.background, CutView.shadowBlur, CutView.shadowBlur)
-                    ctx.shadowBlur = 0
+                console.log("viewport width" + state.viewport.width + "viewport height" + state.viewport.height)
+
+                let order = 10
+                let minDots = 80
+                let maxDotSpacing = state.viewport.width/minDots
+                //Find the largest order of dots less than our max spacing
+                let dotSpacingNormalized = order
+                while (dotSpacingNormalized+order < maxDotSpacing)
+                {
+                    dotSpacingNormalized = dotSpacingNormalized+order
                 }
-                drawGraphics(ctx)
+
+                let startX = (state.viewport.x/dotSpacingNormalized)*dotSpacingNormalized
+                let startY = (state.viewport.y/dotSpacingNormalized)*dotSpacingNormalized
+                let heightRatio = state.viewport.height/canvasRef.current.height
+                let widthRatio = state.viewport.width/canvasRef.current.width
+
+                //TODO: I want dots drawn on the canvas for alignment and visual appeal. However, I want then to scale/fade/etc in a nice way
+                for (let row = startY; row < startY + state.viewport.height; row += dotSpacingNormalized)
+                {
+                    for (let col = startX; col < startX + state.viewport.width; col+= dotSpacingNormalized)
+                    {
+                        let depth = 0
+                        let o = order
+                        while (row%o === 0 && col%o === 0)
+                        {
+                            o = o * order
+                            depth += 1
+                        }
+
+                        ctx.fillStyle = '#555555'
+                        ctx.beginPath()
+                        ctx.arc((col - startX)/widthRatio, (row- startY)/heightRatio, dotSpacingNormalized/order*heightRatio, 0, 2*Math.PI)
+                        ctx.fill()
+                    }
+                }
+
+                drawObjects(ctx)
             }
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [state.background, state.objects, state.hoverGraphicIndex, state.selectedGraphicIndex])
+    }, [state.objects, state.hoverGraphicIndex, state.selectedGraphicIndex, state.viewport, props.viewport])
 
     return (
-        <canvas ref={canvasRef} className={"cut-material"} onMouseDown={onMouseDown} onMouseUp={onMouseUp} onMouseMove={onMouseMove}/>
+        <canvas ref={canvasRef} width={state.viewport.width} height={state.viewport.height} className={"cut-view-canvas"} onMouseDown={onMouseDown} onMouseUp={onMouseUp} onMouseMove={onMouseMove} onWheel={onScroll}/>
     )
 
-
-
-    function drawGraphics(ctx : CanvasRenderingContext2D)  {
+    function drawObjects(ctx : CanvasRenderingContext2D)  {
         for (const object of state.objects) {
+
+            //TODO: We will have all the objects in the list, but we don't want to draw all of them.
+            //TODO: Filter to only those within the viewport
+
+            //TODO: Objects will be in global coordinates, but we'll need to convert them to canvas coordinates
             let startX = object.startX + object.translateX
             let startY = object.startY + object.translateY
             let width = object.width * object.scaleX
@@ -428,19 +337,7 @@ export function CutView (props : CutViewProps) {
             drawScaleHandles(startX, startY, width,height)
 
             switch (object.type) {
-                case DrawableObjectType.SvgGraphicGroup:
-                    for (const graphic of object.loadedGraphics) {
-                        if (graphic.image !== null) {
-                            //draw image
-                            ctx.drawImage(graphic.image,
-                                startX + graphic.translateX * object.scaleX,
-                                startY + graphic.translateY * object.scaleY,
-                                graphic.width * object.scaleX,
-                                graphic.height * object.scaleY)
-                        }
-                    }
-                    break;
-                case DrawableObjectType.SubGraphic:
+                case DrawableObjectType.GraphicObject:
                     if (object.image !== null) {
                         //draw image
                         ctx.drawImage(object.image,
@@ -451,20 +348,21 @@ export function CutView (props : CutViewProps) {
                     }
                     break;
                 case DrawableObjectType.TextObject:
-                    ctx.font = `${object.object.fontSize*object.scaleX}px ${object.object.font}`
+                    //TODO: TextObjects should have a background shape with a color
+                    ctx.font = `${object.fontSize*object.scaleX}px ${object.font}`
                     ctx.strokeStyle = 'black'
                     ctx.fillStyle = 'black'
                     ctx.lineWidth = 1
 
                     ctx.save()
                     ctx.translate(startX, startY)
-                    ctx.textAlign =  object.object.textAlign
-                    for (const line of object.object.text.split('\n')) {
+                    ctx.textAlign =  object.textAlign
+                    for (const line of object.text.split('\n')) {
 
                         ctx.translate(0, ctx.measureText(line).actualBoundingBoxAscent)
 
                         let textStart = 0
-                        switch(object.object.textAlign)
+                        switch(object.textAlign)
                         {
                             case "center":
                                 textStart = width/2
@@ -478,121 +376,47 @@ export function CutView (props : CutViewProps) {
                                 break;
                         }
 
-                        switch(object.object.mode)
-                        {
-                            case LaserMode.Cut:
-                            case LaserMode.Score:
-                                ctx.strokeText(line, textStart, 0, width)
-                                break;
-                            case LaserMode.Engrave:
-                                ctx.fillText(line, textStart, 0, width)
-                                break;
-                        }
+                        ctx.fillText(line, textStart, 0, width)
                     }
                     ctx.restore()
                     break;
             }
 
             if (state.selectedGraphicIndex !==-1 && object===state.objects[state.selectedGraphicIndex])
-                {
-                    // if (state.mouseMode===MouseMode.Translate)
-                    // {
-                    //     drawTranslation(ctx, startX, startY, width, height)
-                    // }
-                    // else
-                    // {
-                        drawDimensions(ctx, startX, startY, width, height)
-                    // }
-                }
-                else if (state.hoverGraphicIndex !==-1 && object===state.objects[state.hoverGraphicIndex]) {
-                    //draw measurements
-                    drawDimensions(ctx, startX, startY, width, height)
-                }
+            {
+                //IF current object is selected
             }
-            function drawScaleHandles(startX : number, startY : number, width : number,height : number){
-                //draw scale handles
-                ctx.beginPath()
-                ctx.fillStyle = "white"
-                ctx.lineWidth = 4
-                let halfSize = CutView.resizeHandleWidth / 2
-                //top left
-                ctx.rect(startX - halfSize - CutView.objectMargin, startY - halfSize - CutView.objectMargin, CutView.resizeHandleWidth, CutView.resizeHandleWidth)
-                //top right
-                ctx.rect(startX + width - halfSize + CutView.objectMargin, startY - halfSize - CutView.objectMargin, CutView.resizeHandleWidth, CutView.resizeHandleWidth)
-                //bottom left
-                ctx.rect(startX - halfSize - CutView.objectMargin, startY + height - halfSize + CutView.objectMargin, CutView.resizeHandleWidth, CutView.resizeHandleWidth)
-                //bottom right
-                ctx.rect(startX + width - halfSize + CutView.objectMargin, startY + height- halfSize + CutView.objectMargin, CutView.resizeHandleWidth, CutView.resizeHandleWidth)
-                ctx.stroke()
-                ctx.fill()
+            else if (state.hoverGraphicIndex !==-1 && object===state.objects[state.hoverGraphicIndex]) {
+                //IF current object is hovered
+                //TODO: Most likely we don't want the handles to show unless we are hovering. It might clutter
             }
         }
+        function drawScaleHandles(startX : number, startY : number, width : number,height : number){
+            //draw scale handles
+            ctx.beginPath()
+            ctx.fillStyle = "white"
+            ctx.lineWidth = 4
+            let halfSize = CutView.resizeHandleWidth / 2
+            //top left
+            ctx.rect(startX - halfSize - CutView.objectMargin, startY - halfSize - CutView.objectMargin, CutView.resizeHandleWidth, CutView.resizeHandleWidth)
+            //top right
+            ctx.rect(startX + width - halfSize + CutView.objectMargin, startY - halfSize - CutView.objectMargin, CutView.resizeHandleWidth, CutView.resizeHandleWidth)
+            //bottom left
+            ctx.rect(startX - halfSize - CutView.objectMargin, startY + height - halfSize + CutView.objectMargin, CutView.resizeHandleWidth, CutView.resizeHandleWidth)
+            //bottom right
+            ctx.rect(startX + width - halfSize + CutView.objectMargin, startY + height- halfSize + CutView.objectMargin, CutView.resizeHandleWidth, CutView.resizeHandleWidth)
+            ctx.stroke()
+            ctx.fill()
+        }
+    }
 
-    // function drawTranslation(ctx : CanvasRenderingContext2D, startX : number, startY : number, width: number, height: number)
-    // {
-    //     ctx.beginPath()
-    //     ctx.fillStyle = "black"
-    //     ctx.font = "25px Arial"
-    //     ctx.strokeStyle = "black"
-    //     ctx.lineWidth = 2
-    //
-    //     let y = FromPixels(startY, CutView.pxPerUnit, props.boardHeight.unit)
-    //     ctx.moveTo(startX, startY)
-    //     ctx.lineTo(startX, 0)
-    //     ctx.save()
-    //     ctx.translate(startX, startY/2)
-    //     ctx.rotate(-Math.PI/2)
-    //     ctx.fillText(`${y.value.toFixed(3)}${ToUnitName(y.unit)}`, -45, -8)
-    //     ctx.fill()
-    //     ctx.restore()
-    //
-    //     let x = FromPixels(startX, CutView.pxPerUnit, props.boardWidth.unit)
-    //     ctx.moveTo(startX, startY)
-    //     ctx.lineTo(0, startY)
-    //     ctx.fillText(`${x.value.toFixed(3)}${ToUnitName(x.unit)}`, startX/2 - 45, startY - 8)
-    //
-    //     ctx.stroke()
-    // }
+    function onScroll (event : WheelEvent<HTMLCanvasElement>) {
+        event.preventDefault()
 
-    function drawDimensions(ctx : CanvasRenderingContext2D, startX : number, startY : number, width: number, height: number) {
-        //draw measurements
-        ctx.beginPath()
-        ctx.fillStyle = "black"
-        ctx.font = "25px Arial"
-
-        ctx.strokeStyle = "black"
-        ctx.lineWidth = 2
-
-        ctx.moveTo(startX, startY)
-        ctx.lineTo(startX, startY - 64)
-        ctx.moveTo(startX, startY - 32)
-        ctx.lineTo(startX + width, startY - 32)
-
-        ctx.moveTo(startX + width, startY)
-        ctx.lineTo(startX + width, startY - 64)
-
-        ctx.moveTo(startX, startY)
-        ctx.lineTo(startX - 64, startY)
-        ctx.moveTo(startX - 32, startY)
-        ctx.lineTo(startX - 32, startY + height)
-
-        ctx.moveTo(startX, startY + height)
-        ctx.lineTo(startX - 64, startY + height)
-
-        ctx.stroke()
-
-        //Draw width
-        let w = FromPixels(width, CutView.pxPerUnit, props.boardWidth.unit)
-        ctx.fillText(`${w.value.toFixed(3)}${ToUnitName(w.unit)}`, startX + width / 2 - 45, startY - 38)
-
-        //draw height
-        let h = FromPixels(height, CutView.pxPerUnit, props.boardHeight.unit)
-        ctx.save()
-        ctx.translate(startX, startY + height / 2)
-        ctx.rotate(-Math.PI / 2)
-        ctx.fillText(`${h.value.toFixed(3)}${ToUnitName(h.unit)}`, -45, -38)
-        ctx.fill()
-        ctx.restore()
+        if (canvasRef.current != null)
+        {
+            dispatch({type: CutViewActionType.Zoom, scale: event.deltaY})
+        }
     }
 
     function onMouseDown (event : MouseEvent<HTMLCanvasElement>) {
@@ -611,11 +435,7 @@ export function CutView (props : CutViewProps) {
         {
             let object = state.objects[state.selectedGraphicIndex]
 
-            let newGraphic = ConvertLoadedObjectToObject(object, CutView.pxPerUnit, props.boardWidth.unit)
-            newGraphic = ScaleGraphicGroup(newGraphic, object.scaleX, object.scaleY)
-
-            //TODO: All the prior logic should really be in the reducer function, but unfortunately I need a way to pass the parent dispatcher into it.
-            props.dispatch({type: EngraveActionType.ObjectChanged, oldObject: object.object, object: newGraphic})
+            props.dispatch({type: AppActionType.ObjectChanged, object: object})
         }
         dispatch({type: CutViewActionType.Finish})
     }
@@ -627,24 +447,20 @@ export function CutView (props : CutViewProps) {
             let canvasX = (event.clientX - rect.x) / rect.width * canvasRef.current.width
             let canvasY = (event.clientY - rect.y) / rect.height * canvasRef.current.height
 
-            if (state.mouseMode===MouseMode.None)
-            {
-                canvasRef.current.style.cursor = state.objects.map(group => {
-                    let mode = IsOnGraphicHandle(canvasX, canvasY, group)
-                    switch(mode)
-                    {
-                        case MouseMode.ScaleBottomLeft:
-                            return "sw-resize"
-                        case MouseMode.ScaleBottomRight:
-                            return "se-resize"
-                        case MouseMode.ScaleTopRight:
-                            return "ne-resize"
-                        case MouseMode.ScaleTopLeft:
-                            return "nw-resize"
-                    }
-                    return null
-                }).find(c => c !==null) ?? "default"
-            }
+            canvasRef.current.style.cursor = (mode => {
+                switch(mode)
+                {
+                    case MouseMode.ScaleBottomLeft:
+                        return "sw-resize"
+                    case MouseMode.ScaleBottomRight:
+                        return "se-resize"
+                    case MouseMode.ScaleTopRight:
+                        return "ne-resize"
+                    case MouseMode.ScaleTopLeft:
+                        return "nw-resize"
+                }
+                return "default"
+            })(state.mouseMode)
 
             if (state.mouseMode !==MouseMode.None)
             {
@@ -673,7 +489,7 @@ function IsInRectBounds(tx : number, ty : number, x : number, y:number, w: numbe
     return tx <= x + w && tx >= x && ty >= y && ty <= y + h
 }
 
-function IsOnGraphicHandle(canvasX:number, canvasY:number, graphic : LoadedDrawableObject) : MouseMode {
+function IsOnGraphicHandle(canvasX:number, canvasY:number, graphic : DrawableObject) : MouseMode {
     let clickTargetSize = CutView.resizeHandleWidth * 2
 
     if (IsInRectBounds(canvasX, canvasY, graphic.startX + graphic.translateX - CutView.resizeHandleWidth - CutView.objectMargin, graphic.startY + graphic.translateY - CutView.resizeHandleWidth - CutView.objectMargin, clickTargetSize, clickTargetSize))
