@@ -23,10 +23,6 @@ export interface GraphicObject {
     //global pixels
     width : number
     height : number
-    translateX : number
-    translateY : number
-    scaleX : number
-    scaleY : number
     startX : number
     startY : number
 }
@@ -39,13 +35,10 @@ export interface TextObject {
     textAlign: CanvasTextAlign,
     //backgroundColor: Color
     //backgroundShape: Shape
+
     //global pixels
     width : number
     height : number
-    translateX : number
-    translateY : number
-    scaleX : number
-    scaleY : number
     startX : number
     startY : number
 }

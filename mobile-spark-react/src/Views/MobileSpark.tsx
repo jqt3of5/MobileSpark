@@ -5,6 +5,7 @@ import {useCookies} from "react-cookie";
 import {v4 as uuidv4} from 'uuid';
 import axios from 'axios';
 import './MobileSpark.css'
+import {DrawableObjectType} from "../common/dto";
 
 function reducer(state: AppState, action :AppAction) : AppState
 {
@@ -21,7 +22,17 @@ function reducer(state: AppState, action :AppAction) : AppState
 }
 export function MobileSpark() {
     var [state, dispatch] = useReducer(reducer, {
-        project: {projectId: "12345", objects:[]},
+        project: {projectId: "12345", objects:[
+            { type: DrawableObjectType.TextObject,
+                text : "hello!",
+                font : "Arial",
+                fontSize : 14,
+                textAlign: "center",
+                //global pixels
+                width : 100,
+                height : 100,
+                startX : 100,
+                startY : 100 }]},
         viewPort: {width: 1903, height: 1000, x: -500, y: -500},
         snapTo: SnapTo.Continuous,
         isUploadingNewGraphic: false,
